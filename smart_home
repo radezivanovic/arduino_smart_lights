@@ -1,0 +1,98 @@
+#include <SPI.h>
+#include <WiFiNINA.h>
+#include <Arduino_MKRENV.h>
+
+#include "arduino_secrets.h" 
+#include "yeelight.h"
+
+///////please enter your sensitive data in the Secret tab/arduino_secrets.h
+char ssid[] = SECRET_SSID;        // your network SSID (name)
+char pass[] = SECRET_PASS;    // your network password (use for WPA, or use as key for WEP)
+int status = WL_IDLE_STATUS;     // the Wifi radio's status
+int pir_sensor_pin = 5;              // the pin that the PIR sensor is attached to
+int pir_sensor_state = LOW;             // by default, no motion detected
+int pir_value = 0;                 // variable to store the PIR sensor status (value)
+Yeelight yeelight;
+
+void setup() {
+  
+  pinMode(pir_sensor_pin, INPUT);    // initialize PIR sensor as an input
+  
+  //Initialize serial and wait for port to open:
+  Serial.begin(9600);
+  while (!Serial);
+
+  if (!ENV.begin()) {
+    Serial.println("Failed to initialize MKR ENV shield!");
+    while (1);
+  }
+
+  // check for the WiFi module:
+  if (WiFi.status() == WL_NO_MODULE) {
+    Serial.println("Communication with WiFi module failed!");
+    // don't continue
+    while (true);
+  }
+
+  String fv = WiFi.firmwareVersion();
+  if (fv < "1.0.0") {
+    Serial.println("Please upgrade the firmware");
+  }
+
+  // attempt to connect to Wifi network:
+  while (status != WL_CONNECTED) {
+    Serial.print("Attempting to connect to WPA SSID: ");
+    Serial.println(ssid);
+    // Connect to WPA/WPA2 network:
+    status = WiFi.begin(ssid, pass);
+
+    // wait 10 seconds for connection:
+    delay(10000);
+  }
+
+  // you're connected now, so print out the data:
+  Serial.println("You're connected to the network");
+}
+
+void loop() {
+
+    pir_value = digitalRead(pir_sensor_pin);   // read PIR sensor value
+    
+    float illuminance = ENV.readIlluminance();
+    Serial.print("Illuminance = ");
+    Serial.print(illuminance);
+    Serial.println("lx");
+    delay(500);
+
+    if (pir_value == HIGH) {           // check if the PIR sensor is HIGH
+      if (pir_sensor_state == LOW) {
+        Serial.println("person detected"); 
+        pir_sensor_state = HIGH;       // update variable state to HIGH
+            if (illuminance<20) {
+                yeelight.lookup();
+                if (yeelight.feedback()) {
+                Serial.println(yeelight.getLocation());
+                Serial.println(yeelight.sendCommand("set_power", "[\"on\", \"smooth\", 500]"));      
+                Serial.println(yeelight.sendCommand("set_bright", "[100]"));
+               }
+            }
+       }
+       pir_sensor_state = LOW;       // update variable state to LOW
+    } 
+    
+    if (illuminance>100 && illuminance<180){
+    yeelight.lookup();
+    if (yeelight.feedback()) {
+    Serial.println(yeelight.getLocation());
+    Serial.println(yeelight.sendCommand("set_bright", "[30]"));
+   }
+  }
+    if (illuminance>250){
+    yeelight.lookup();
+    if (yeelight.feedback()) {
+    Serial.println(yeelight.getLocation());
+    Serial.println(yeelight.sendCommand("set_power", "[\"off\", \"smooth\", 500]"));
+   }
+   pir_sensor_state = LOW;       // update variable state to LOW
+  }
+}
